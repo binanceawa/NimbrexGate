@@ -531,3 +531,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
 
     function previewWithdraw(uint256 assets_) external view returns (uint256) {
         uint256 ts = shares.totalSupply();
+        if (ts == 0) return assets_;
+        uint256 ta = totalAssets();
+        return NimbrexMath.mulDivUp(assets_, ts, ta);
+    }
+
+    function previewRedeem(uint256 shares_) external view returns (uint256) {
+        return convertToAssets(shares_);
+    }
+
+    // ----- Core actions
+    function deposit(uint256 assets_, address receiver, uint256 minSharesOut)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 sharesOut)
+    {
+        if (assets_ == 0) revert NRX_VAULT_ZERO();
+        if (receiver == address(0)) revert NRX_VAULT_BAD_ADDR();
+        _accrueMgmtFee();
+        if (totalAssets() + assets_ > depositCap) revert NRX_VAULT_CAP();
+        sharesOut = convertToShares(assets_);
+        if (sharesOut < minSharesOut) revert NRX_VAULT_SLIPPAGE();
+        asset.safeTransferFrom(msg.sender, address(this), assets_);
+        shares._mint(receiver, sharesOut);
+        emit NimbrexDeposit(msg.sender, receiver, assets_, sharesOut);
+    }
+
+    function mint(uint256 shares_, address receiver, uint256 maxAssetsIn)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 assetsIn)
+    {
+        if (shares_ == 0) revert NRX_VAULT_ZERO();
+        if (receiver == address(0)) revert NRX_VAULT_BAD_ADDR();
+        _accrueMgmtFee();
+        assetsIn = _previewMintInternal(shares_);
+        if (assetsIn > maxAssetsIn) revert NRX_VAULT_SLIPPAGE();
+        if (totalAssets() + assetsIn > depositCap) revert NRX_VAULT_CAP();
+        asset.safeTransferFrom(msg.sender, address(this), assetsIn);
+        shares._mint(receiver, shares_);
