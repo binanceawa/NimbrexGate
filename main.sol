@@ -408,3 +408,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
         bool enabled;
         uint64 lastReportAt;
         uint256 debt;
+        uint256 maxDebt;
+        uint256 totalReportedAssets;
+        int256 cumulativePnl;
+    }
+    mapping(address => StrategyState) public strategy;
+    address[] public strategyList;
+
+    // Unique identifiers / domain tags (hex constants; no placeholders).
+    bytes32 public constant PLATFORM_TAG =
+        0x7eD4c91fA3b82c60e11f9c8b4a2f7e3d1c0a9b8f6e5d4c3b2a1908f7e6d5c4b3;
+    bytes32 public constant RISK_POLICY_TAG =
+        0x4Bc819e2f7a6d3c90581f4e2d9c0b7a5f8e3d1c6b9a4f7e2d5c8b1a4f7e2d9c0b;
+
+    constructor(
+        IERC20 asset_,
+        string memory shareName,
+        string memory shareSymbol,
+        address owner_,
+        address guardian_,
+        address allocator_,
+        address feeRecipient_,
+        uint256 depositCap_,
+        uint256 maxTotalDebt_,
+        uint64 mgmtFeeBpsPerYear_,
+        uint64 performanceFeeBps_,
+        uint64 maxLossBpsPerReport_,
+        uint64 reportCooldownSec_
+    ) NimbrexOwnable2Step(owner_) {
+        if (address(asset_) == address(0)) revert NRX_VAULT_BAD_ASSET();
+        if (guardian_ == address(0) || allocator_ == address(0) || feeRecipient_ == address(0)) revert NRX_VAULT_BAD_ADDR();
+        if (depositCap_ == 0 || maxTotalDebt_ == 0) revert NRX_VAULT_ZERO();
+        if (mgmtFeeBpsPerYear_ > 2_000) revert NRX_VAULT_BAD_FEE(); // 20%/year hard ceiling
+        if (performanceFeeBps_ > 5_000) revert NRX_VAULT_BAD_FEE(); // 50% hard ceiling
+        if (maxLossBpsPerReport_ > 3_000) revert NRX_VAULT_BAD_FEE(); // 30% per report
+        if (reportCooldownSec_ < 30) revert NRX_VAULT_BAD_FEE(); // avoid spam
+
+        asset = asset_;
+        uint8 dec = 18;
+        // best-effort metadata read
+        try IERC20Metadata(address(asset_)).decimals() returns (uint8 d) {
+            dec = d;
