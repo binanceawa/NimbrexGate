@@ -449,3 +449,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
         // best-effort metadata read
         try IERC20Metadata(address(asset_)).decimals() returns (uint8 d) {
             dec = d;
+        } catch {}
+        assetDecimals = dec;
+        shares = new NimbrexVaultShareToken(address(this), shareName, shareSymbol, dec);
+
+        guardian = guardian_;
+        allocator = allocator_;
+        feeRecipient = feeRecipient_;
+
+        depositCap = depositCap_;
+        maxTotalDebt = maxTotalDebt_;
+
+        mgmtFeeBpsPerYear = mgmtFeeBpsPerYear_;
+        performanceFeeBps = performanceFeeBps_;
+        maxLossBpsPerReport = maxLossBpsPerReport_;
+        reportCooldownSec = reportCooldownSec_;
+        lastMgmtAccrual = uint64(block.timestamp);
+    }
+
+    // ----- View helpers
+    function shareToken() external view returns (address) {
+        return address(shares);
+    }
+
+    function strategyCount() external view returns (uint256) {
+        return strategyList.length;
+    }
+
+    function totalIdleAssets() public view returns (uint256) {
+        return asset.balanceOf(address(this));
+    }
+
+    function totalStrategyAssets() public view returns (uint256 sum) {
+        uint256 n = strategyList.length;
+        for (uint256 i = 0; i < n; i++) {
+            address s = strategyList[i];
+            StrategyState memory st = strategy[s];
+            if (!st.exists) continue;
+            if (!st.enabled) continue;
+            // Trust-minimized: prefer strategy reported managed assets, but cap by debt + plausible profit.
+            uint256 m = 0;
+            try INimbrexStrategy(s).totalManagedAssets() returns (uint256 t) {
