@@ -367,3 +367,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
     // ----- Events
     event NimbrexDeposit(address indexed caller, address indexed owner, uint256 assets, uint256 shares);
     event NimbrexWithdraw(address indexed caller, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
+    event NimbrexStrategyAdded(address indexed strategy, uint256 maxDebt);
+    event NimbrexStrategyStatus(address indexed strategy, bool enabled);
+    event NimbrexDebtUpdated(address indexed strategy, uint256 oldDebt, uint256 newDebt);
+    event NimbrexHarvest(address indexed strategy, int256 pnl, uint256 totalAfter, uint256 feeSharesMinted);
+    event NimbrexFeesUpdated(uint64 mgmtBpsPerYear, uint64 perfBps, address indexed feeRecipient);
+    event NimbrexCapsUpdated(uint256 depositCap, uint256 maxTotalDebt);
+    event NimbrexLossControls(uint64 maxLossBpsPerReport, uint64 reportCooldownSec);
+    event NimbrexGuardianSet(address indexed oldGuardian, address indexed newGuardian);
+    event NimbrexAllocatorSet(address indexed oldAllocator, address indexed newAllocator);
+    event NimbrexSweep(address indexed token, address indexed to, uint256 amount);
+
+    // ----- Immutable core
+    IERC20 public immutable asset;
+    uint8 public immutable assetDecimals;
+    NimbrexVaultShareToken public immutable shares;
+
+    // ----- Roles (constructor-set, standard pattern)
+    address public guardian;
+    address public allocator;
+    address public feeRecipient;
+
+    // ----- Parameters & accounting
+    uint256 public depositCap;
+    uint256 public maxTotalDebt;
+
+    // Fees: mgmt fee accrues continuously against total assets (in bps/year)
+    // and performance fee applies to positive PnL on reports.
+    uint64 public mgmtFeeBpsPerYear;
+    uint64 public performanceFeeBps;
+    uint64 public maxLossBpsPerReport;
+    uint64 public reportCooldownSec;
+
+    uint64 public lastMgmtAccrual;
+    uint256 public totalDebt;
+
+    // Strategy state
+    struct StrategyState {
+        bool exists;
+        bool enabled;
+        uint64 lastReportAt;
+        uint256 debt;
