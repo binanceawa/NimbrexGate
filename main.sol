@@ -736,3 +736,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
         if (assets_ == 0) revert NRX_VAULT_ZERO();
         StrategyState storage st = strategy[strategyAddr];
         if (!st.exists) revert NRX_VAULT_STRAT_MISSING();
+        _accrueMgmtFee();
+
+        uint256 req = NimbrexMath.min(assets_, st.debt);
+        if (req == 0) revert NRX_VAULT_ZERO();
+
+        uint256 oldDebt = st.debt;
+        unchecked {
+            st.debt = oldDebt - req;
+            totalDebt -= req;
+        }
+        emit NimbrexDebtUpdated(strategyAddr, oldDebt, st.debt);
+
+        returnedAssets = INimbrexStrategy(strategyAddr).onDivest(req);
+    }
+
+    /// @notice Realize PnL from a strategy. Mints fee shares on profit.
+    function harvest(address strategyAddr, uint256 minTotalAfter) external nonReentrant onlyAllocator returns (int256 pnl, uint256 totalAfter) {
+        StrategyState storage st = strategy[strategyAddr];
+        if (!st.exists) revert NRX_VAULT_STRAT_MISSING();
+        if (!st.enabled) revert NRX_VAULT_STRAT_DISABLED();
+        if (uint64(block.timestamp) < st.lastReportAt + reportCooldownSec) revert NRX_VAULT_COOLDOWN();
+        _accrueMgmtFee();
+
+        uint256 beforeAssets = totalAssets();
+        (pnl, totalAfter) = INimbrexStrategy(strategyAddr).report();
+        if (totalAfter < minTotalAfter) revert NRX_VAULT_SLIPPAGE();
+        if (totalAfter == 0) revert NRX_VAULT_BAD_REPORT();
+
+        // Loss protection: cap losses per report based on pre-report total assets.
+        if (pnl < 0) {
+            uint256 loss = uint256(-pnl);
+            uint256 lossBps = NimbrexMath.mulDivUp(loss, 10_000, beforeAssets == 0 ? 1 : beforeAssets);
+            if (lossBps > maxLossBpsPerReport) revert NRX_VAULT_LOSS_LIMIT();
+        }
+
+        st.lastReportAt = uint64(block.timestamp);
+        st.totalReportedAssets = totalAfter;
+        st.cumulativePnl += pnl;
+
+        uint256 feeShares = 0;
+        if (pnl > 0 && performanceFeeBps != 0) {
