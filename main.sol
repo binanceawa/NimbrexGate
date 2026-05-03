@@ -654,3 +654,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
     function setAllocator(address newAllocator) external onlyOwner {
         if (newAllocator == address(0)) revert NRX_VAULT_BAD_ADDR();
         address old = allocator;
+        allocator = newAllocator;
+        emit NimbrexAllocatorSet(old, newAllocator);
+    }
+
+    function setGuardian(address newGuardian) external onlyOwner {
+        if (newGuardian == address(0)) revert NRX_VAULT_BAD_ADDR();
+        address old = guardian;
+        guardian = newGuardian;
+        emit NimbrexGuardianSet(old, newGuardian);
+    }
+
+    function setCaps(uint256 depositCap_, uint256 maxTotalDebt_) external onlyOwner {
+        if (depositCap_ == 0 || maxTotalDebt_ == 0) revert NRX_VAULT_ZERO();
+        depositCap = depositCap_;
+        maxTotalDebt = maxTotalDebt_;
+        emit NimbrexCapsUpdated(depositCap_, maxTotalDebt_);
+    }
+
+    function setFees(uint64 mgmtBpsPerYear_, uint64 perfBps_, address feeRecipient_) external onlyOwner {
+        if (feeRecipient_ == address(0)) revert NRX_VAULT_BAD_ADDR();
+        if (mgmtBpsPerYear_ > 2_000) revert NRX_VAULT_BAD_FEE();
+        if (perfBps_ > 5_000) revert NRX_VAULT_BAD_FEE();
+        _accrueMgmtFee();
+        mgmtFeeBpsPerYear = mgmtBpsPerYear_;
+        performanceFeeBps = perfBps_;
+        feeRecipient = feeRecipient_;
+        emit NimbrexFeesUpdated(mgmtBpsPerYear_, perfBps_, feeRecipient_);
+    }
+
+    function setLossControls(uint64 maxLossBpsPerReport_, uint64 reportCooldownSec_) external onlyOwner {
+        if (maxLossBpsPerReport_ > 3_000) revert NRX_VAULT_BAD_FEE();
+        if (reportCooldownSec_ < 30) revert NRX_VAULT_BAD_FEE();
+        maxLossBpsPerReport = maxLossBpsPerReport_;
+        reportCooldownSec = reportCooldownSec_;
+        emit NimbrexLossControls(maxLossBpsPerReport_, reportCooldownSec_);
+    }
+
+    modifier onlyGuardian() {
+        if (msg.sender != guardian) revert NRX_VAULT_ONLY_GUARDIAN();
+        _;
+    }
