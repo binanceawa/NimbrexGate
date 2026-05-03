@@ -121,3 +121,44 @@ library NimbrexSafeERC20 {
         if (out.length == 32) {
             uint256 r;
             assembly {
+                r := mload(add(out, 0x20))
+            }
+            if (r == 0) revert NRX_ERC20_FALSE_RETURN();
+            return out;
+        }
+        return out;
+    }
+
+    function safeTransfer(IERC20 token, address to, uint256 amount) internal {
+        _callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, amount));
+    }
+
+    function safeTransferFrom(IERC20 token, address from, address to, uint256 amount) internal {
+        _callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, amount));
+    }
+
+    function safeApprove(IERC20 token, address spender, uint256 amount) internal {
+        _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, amount));
+    }
+}
+
+abstract contract NimbrexReentrancyGuard {
+    error NRX_REENTRANCY();
+    uint256 private _nimbrexStatus = 1;
+
+    modifier nonReentrant() {
+        if (_nimbrexStatus != 1) revert NRX_REENTRANCY();
+        _nimbrexStatus = 2;
+        _;
+        _nimbrexStatus = 1;
+    }
+}
+
+abstract contract NimbrexPausable {
+    error NRX_PAUSED();
+    event NimbrexPauseSet(bool paused, uint64 at);
+
+    bool public paused;
+
+    modifier whenNotPaused() {
+        if (paused) revert NRX_PAUSED();
