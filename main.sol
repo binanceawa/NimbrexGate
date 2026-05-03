@@ -572,3 +572,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
         if (totalAssets() + assetsIn > depositCap) revert NRX_VAULT_CAP();
         asset.safeTransferFrom(msg.sender, address(this), assetsIn);
         shares._mint(receiver, shares_);
+        emit NimbrexDeposit(msg.sender, receiver, assetsIn, shares_);
+    }
+
+    function withdraw(uint256 assets_, address receiver, address owner_, uint256 maxSharesBurn)
+        external
+        nonReentrant
+        returns (uint256 sharesBurned)
+    {
+        if (assets_ == 0) revert NRX_VAULT_ZERO();
+        if (receiver == address(0) || owner_ == address(0)) revert NRX_VAULT_BAD_ADDR();
+        _accrueMgmtFee();
+        sharesBurned = _previewWithdrawInternal(assets_);
+        if (sharesBurned > maxSharesBurn) revert NRX_VAULT_SLIPPAGE();
+        _pullLiquidity(assets_);
+        if (msg.sender != owner_) {
+            bool ok = shares.transferFrom(owner_, address(this), sharesBurned);
+            if (!ok) revert NRX_VAULT_SHARE_PULL();
+            shares._burn(address(this), sharesBurned);
+        } else {
+            shares._burn(owner_, sharesBurned);
+        }
+        asset.safeTransfer(receiver, assets_);
+        emit NimbrexWithdraw(msg.sender, receiver, owner_, assets_, sharesBurned);
+    }
+
+    function redeem(uint256 shares_, address receiver, address owner_, uint256 minAssetsOut)
+        external
+        nonReentrant
+        returns (uint256 assetsOut)
+    {
+        if (shares_ == 0) revert NRX_VAULT_ZERO();
+        if (receiver == address(0) || owner_ == address(0)) revert NRX_VAULT_BAD_ADDR();
+        _accrueMgmtFee();
+        assetsOut = convertToAssets(shares_);
+        if (assetsOut < minAssetsOut) revert NRX_VAULT_SLIPPAGE();
+        _pullLiquidity(assetsOut);
+        if (msg.sender != owner_) {
+            bool ok = shares.transferFrom(owner_, address(this), shares_);
+            if (!ok) revert NRX_VAULT_SHARE_PULL();
+            shares._burn(address(this), shares_);
+        } else {
