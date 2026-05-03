@@ -162,3 +162,44 @@ abstract contract NimbrexPausable {
 
     modifier whenNotPaused() {
         if (paused) revert NRX_PAUSED();
+        _;
+    }
+
+    function _setPaused(bool p) internal {
+        paused = p;
+        emit NimbrexPauseSet(p, uint64(block.timestamp));
+    }
+}
+
+abstract contract NimbrexOwnable2Step {
+    error NRX_NOT_OWNER();
+    error NRX_NOT_PENDING_OWNER();
+    error NRX_BAD_OWNER();
+
+    event NimbrexOwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+    event NimbrexOwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    address public owner;
+    address public pendingOwner;
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert NRX_NOT_OWNER();
+        _;
+    }
+
+    constructor(address initialOwner) {
+        if (initialOwner == address(0)) revert NRX_BAD_OWNER();
+        owner = initialOwner;
+        emit NimbrexOwnershipTransferred(address(0), initialOwner);
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert NRX_BAD_OWNER();
+        pendingOwner = newOwner;
+        emit NimbrexOwnershipTransferStarted(owner, newOwner);
+    }
+
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NRX_NOT_PENDING_OWNER();
+        address prev = owner;
+        owner = msg.sender;
