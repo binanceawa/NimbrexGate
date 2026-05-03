@@ -326,3 +326,44 @@ contract NimbrexVaultShareToken {
     }
 
     function _burn(address from, uint256 value) external onlyVault {
+        if (from == address(0)) revert NRX_SHARE_BAD_FROM();
+        uint256 bal = balanceOf[from];
+        if (bal < value) revert NRX_SHARE_INSUFF();
+        unchecked {
+            balanceOf[from] = bal - value;
+            totalSupply -= value;
+        }
+        emit Transfer(from, address(0), value);
+    }
+
+    /// @notice EIP-712 domain name digest helper for wallet wiring checks.
+    function nameHash712() external view returns (bytes32) {
+        return keccak256(bytes(name));
+    }
+}
+
+/// @notice Main vault contract. Single-asset, multi-strategy.
+contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexPausable {
+    using NimbrexSafeERC20 for IERC20;
+
+    // ----- Errors (distinct prefix for uniqueness)
+    error NRX_VAULT_BAD_ASSET();
+    error NRX_VAULT_BAD_ADDR();
+    error NRX_VAULT_ZERO();
+    error NRX_VAULT_SLIPPAGE();
+    error NRX_VAULT_CAP();
+    error NRX_VAULT_STRAT_MISSING();
+    error NRX_VAULT_STRAT_EXISTS();
+    error NRX_VAULT_STRAT_DISABLED();
+    error NRX_VAULT_DEBT_LIMIT();
+    error NRX_VAULT_LOSS_LIMIT();
+    error NRX_VAULT_COOLDOWN();
+    error NRX_VAULT_ONLY_GUARDIAN();
+    error NRX_VAULT_ONLY_ALLOCATOR();
+    error NRX_VAULT_BAD_FEE();
+    error NRX_VAULT_BAD_REPORT();
+    error NRX_VAULT_SHARE_PULL();
+
+    // ----- Events
+    event NimbrexDeposit(address indexed caller, address indexed owner, uint256 assets, uint256 shares);
+    event NimbrexWithdraw(address indexed caller, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
