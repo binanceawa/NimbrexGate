@@ -613,3 +613,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
             if (!ok) revert NRX_VAULT_SHARE_PULL();
             shares._burn(address(this), shares_);
         } else {
+            shares._burn(owner_, shares_);
+        }
+        asset.safeTransfer(receiver, assetsOut);
+        emit NimbrexWithdraw(msg.sender, receiver, owner_, assetsOut, shares_);
+    }
+
+    // ----- Strategy controls
+    function addStrategy(address strategyAddr, uint256 maxDebt_) external onlyOwner {
+        if (strategyAddr == address(0)) revert NRX_VAULT_BAD_ADDR();
+        if (strategy[strategyAddr].exists) revert NRX_VAULT_STRAT_EXISTS();
+        if (maxDebt_ == 0) revert NRX_VAULT_ZERO();
+        strategy[strategyAddr] = StrategyState({
+            exists: true,
+            enabled: true,
+            lastReportAt: uint64(block.timestamp),
+            debt: 0,
+            maxDebt: maxDebt_,
+            totalReportedAssets: 0,
+            cumulativePnl: 0
+        });
+        strategyList.push(strategyAddr);
+        emit NimbrexStrategyAdded(strategyAddr, maxDebt_);
+    }
+
+    function setStrategyEnabled(address strategyAddr, bool enabled) external onlyOwner {
+        StrategyState storage st = strategy[strategyAddr];
+        if (!st.exists) revert NRX_VAULT_STRAT_MISSING();
+        st.enabled = enabled;
+        emit NimbrexStrategyStatus(strategyAddr, enabled);
+    }
+
+    function setStrategyMaxDebt(address strategyAddr, uint256 maxDebt_) external onlyOwner {
+        StrategyState storage st = strategy[strategyAddr];
+        if (!st.exists) revert NRX_VAULT_STRAT_MISSING();
+        if (maxDebt_ == 0) revert NRX_VAULT_ZERO();
+        st.maxDebt = maxDebt_;
+    }
+
+    function setAllocator(address newAllocator) external onlyOwner {
+        if (newAllocator == address(0)) revert NRX_VAULT_BAD_ADDR();
+        address old = allocator;
