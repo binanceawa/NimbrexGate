@@ -285,3 +285,44 @@ contract NimbrexVaultShareToken {
         address spender,
         uint256 value,
         uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        if (block.timestamp > deadline) revert NRX_SHARE_EXPIRED();
+        uint256 nonce = nonces[owner_]++;
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                DOMAIN_SEPARATOR,
+                keccak256(abi.encode(_PERMIT_TYPEHASH, owner_, spender, value, nonce, deadline))
+            )
+        );
+        address recovered = ecrecover(digest, v, r, s);
+        if (recovered == address(0) || recovered != owner_) revert NRX_SHARE_BAD_SIG();
+        allowance[owner_][spender] = value;
+        emit Approval(owner_, spender, value);
+    }
+
+    function _transfer(address from, address to, uint256 value) internal {
+        if (from == address(0)) revert NRX_SHARE_BAD_FROM();
+        if (to == address(0)) revert NRX_SHARE_BAD_TO();
+        uint256 bal = balanceOf[from];
+        if (bal < value) revert NRX_SHARE_INSUFF();
+        unchecked {
+            balanceOf[from] = bal - value;
+            balanceOf[to] += value;
+        }
+        emit Transfer(from, to, value);
+    }
+
+    function _mint(address to, uint256 value) external onlyVault {
+        if (to == address(0)) revert NRX_SHARE_BAD_TO();
+        totalSupply += value;
+        unchecked {
+            balanceOf[to] += value;
+        }
+        emit Transfer(address(0), to, value);
+    }
+
+    function _burn(address from, uint256 value) external onlyVault {
