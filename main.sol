@@ -244,3 +244,44 @@ contract NimbrexVaultShareToken {
     }
 
     constructor(address vault_, string memory name_, string memory symbol_, uint8 decimals_) {
+        vault = vault_;
+        name = name_;
+        symbol = symbol_;
+        decimals = decimals_;
+        DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                _EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes(name_)),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(this)
+            )
+        );
+    }
+
+    function approve(address spender, uint256 value) external returns (bool) {
+        allowance[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
+        return true;
+    }
+
+    function transfer(address to, uint256 value) external returns (bool) {
+        _transfer(msg.sender, to, value);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 value) external returns (bool) {
+        uint256 a = allowance[from][msg.sender];
+        if (a != type(uint256).max) {
+            if (a < value) revert NRX_SHARE_ALLOWANCE();
+            allowance[from][msg.sender] = a - value;
+        }
+        _transfer(from, to, value);
+        return true;
+    }
+
+    function permit(
+        address owner_,
+        address spender,
+        uint256 value,
+        uint256 deadline,
