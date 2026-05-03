@@ -203,3 +203,44 @@ abstract contract NimbrexOwnable2Step {
         if (msg.sender != pendingOwner) revert NRX_NOT_PENDING_OWNER();
         address prev = owner;
         owner = msg.sender;
+        pendingOwner = address(0);
+        emit NimbrexOwnershipTransferred(prev, msg.sender);
+    }
+}
+
+/// @notice Share token implemented inline to keep the vault self-contained.
+contract NimbrexVaultShareToken {
+    error NRX_SHARE_BAD_TO();
+    error NRX_SHARE_BAD_FROM();
+    error NRX_SHARE_INSUFF();
+    error NRX_SHARE_ALLOWANCE();
+    error NRX_SHARE_EXPIRED();
+    error NRX_SHARE_BAD_SIG();
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    string public name;
+    string public symbol;
+    uint8 public immutable decimals;
+
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    // EIP-2612 Permit (EIP-712).
+    bytes32 public immutable DOMAIN_SEPARATOR;
+    bytes32 internal constant _EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 internal constant _PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+    mapping(address => uint256) public nonces;
+
+    address public immutable vault;
+
+    modifier onlyVault() {
+        if (msg.sender != vault) revert NRX_SHARE_BAD_FROM();
+        _;
+    }
+
+    constructor(address vault_, string memory name_, string memory symbol_, uint8 decimals_) {
