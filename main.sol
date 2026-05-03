@@ -695,3 +695,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
         if (msg.sender != guardian) revert NRX_VAULT_ONLY_GUARDIAN();
         _;
     }
+
+    modifier onlyAllocator() {
+        if (msg.sender != allocator) revert NRX_VAULT_ONLY_ALLOCATOR();
+        _;
+    }
+
+    function pause(bool p) external onlyGuardian {
+        _setPaused(p);
+    }
+
+    /// @notice Move idle funds into a strategy. Allocator-controlled.
+    function investInto(address strategyAddr, uint256 assets_) external nonReentrant whenNotPaused onlyAllocator returns (uint256 invested) {
+        if (assets_ == 0) revert NRX_VAULT_ZERO();
+        StrategyState storage st = strategy[strategyAddr];
+        if (!st.exists) revert NRX_VAULT_STRAT_MISSING();
+        if (!st.enabled) revert NRX_VAULT_STRAT_DISABLED();
+        _accrueMgmtFee();
+
+        uint256 idle = totalIdleAssets();
+        uint256 amt = NimbrexMath.min(assets_, idle);
+        if (amt == 0) revert NRX_VAULT_ZERO();
+
+        uint256 newDebt = st.debt + amt;
+        if (newDebt > st.maxDebt) revert NRX_VAULT_DEBT_LIMIT();
+        if (totalDebt + amt > maxTotalDebt) revert NRX_VAULT_DEBT_LIMIT();
+
+        uint256 oldDebt = st.debt;
+        st.debt = newDebt;
+        totalDebt += amt;
+        emit NimbrexDebtUpdated(strategyAddr, oldDebt, newDebt);
+
+        asset.safeTransfer(strategyAddr, amt);
+        invested = INimbrexStrategy(strategyAddr).onInvest(amt);
+        // If strategy "uses" less than sent, it should return the rest; we don't assume.
+    }
+
+    /// @notice Pull funds back from a strategy. Allocator-controlled.
+    function divestFrom(address strategyAddr, uint256 assets_) external nonReentrant onlyAllocator returns (uint256 returnedAssets) {
+        if (assets_ == 0) revert NRX_VAULT_ZERO();
+        StrategyState storage st = strategy[strategyAddr];
+        if (!st.exists) revert NRX_VAULT_STRAT_MISSING();
