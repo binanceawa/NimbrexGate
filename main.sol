@@ -80,3 +80,44 @@ library NimbrexMath {
                 prod0 := sub(prod0, remainder)
             }
             uint256 twos = d & (~d + 1);
+            assembly {
+                d := div(d, twos)
+                prod0 := div(prod0, twos)
+                twos := add(div(sub(0, twos), twos), 1)
+            }
+            prod0 |= prod1 * twos;
+            uint256 inv = (3 * d) ^ 2;
+            inv *= 2 - d * inv;
+            inv *= 2 - d * inv;
+            inv *= 2 - d * inv;
+            inv *= 2 - d * inv;
+            inv *= 2 - d * inv;
+            inv *= 2 - d * inv;
+            z = prod0 * inv;
+        }
+    }
+
+    function mulDivUp(uint256 x, uint256 y, uint256 d) internal pure returns (uint256) {
+        uint256 z = mulDivDown(x, y, d);
+        if (z == 0) {
+            if (x == 0 || y == 0) return 0;
+        }
+        unchecked {
+            if (mulmod(x, y, d) != 0) z += 1;
+        }
+        return z;
+    }
+}
+
+library NimbrexSafeERC20 {
+    error NRX_ERC20_CALL_FAIL();
+    error NRX_ERC20_FALSE_RETURN();
+
+    function _callOptionalReturn(IERC20 token, bytes memory data) private returns (bytes memory ret) {
+        (bool ok, bytes memory out) = address(token).call(data);
+        if (!ok) revert NRX_ERC20_CALL_FAIL();
+        if (out.length == 0) return out;
+        // Tokens that return a boolean should return true.
+        if (out.length == 32) {
+            uint256 r;
+            assembly {
