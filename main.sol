@@ -490,3 +490,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
             // Trust-minimized: prefer strategy reported managed assets, but cap by debt + plausible profit.
             uint256 m = 0;
             try INimbrexStrategy(s).totalManagedAssets() returns (uint256 t) {
+                m = t;
+            } catch {
+                // If strategy misbehaves, treat as debt (conservative)
+                m = st.debt;
+            }
+            sum += m;
+        }
+    }
+
+    function totalAssets() public view returns (uint256) {
+        return totalIdleAssets() + totalStrategyAssets();
+    }
+
+    function convertToShares(uint256 assets_) public view returns (uint256) {
+        uint256 ts = shares.totalSupply();
+        if (ts == 0) return assets_;
+        uint256 ta = totalAssets();
+        if (ta == 0) return assets_;
+        return NimbrexMath.mulDivDown(assets_, ts, ta);
+    }
+
+    function convertToAssets(uint256 shares_) public view returns (uint256) {
+        uint256 ts = shares.totalSupply();
+        if (ts == 0) return shares_;
+        uint256 ta = totalAssets();
+        return NimbrexMath.mulDivDown(shares_, ta, ts);
+    }
+
+    function previewDeposit(uint256 assets_) external view returns (uint256) {
+        return convertToShares(assets_);
+    }
+
+    function previewMint(uint256 shares_) external view returns (uint256) {
+        uint256 ts = shares.totalSupply();
+        if (ts == 0) return shares_;
+        uint256 ta = totalAssets();
+        return NimbrexMath.mulDivUp(shares_, ta, ts);
+    }
+
+    function previewWithdraw(uint256 assets_) external view returns (uint256) {
+        uint256 ts = shares.totalSupply();
