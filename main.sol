@@ -818,3 +818,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
         uint256 remaining = assetsNeeded - idle;
 
         // Pull proportionally from enabled strategies, up to their debt.
+        uint256 n = strategyList.length;
+        for (uint256 i = 0; i < n && remaining != 0; i++) {
+            address s = strategyList[i];
+            StrategyState storage st = strategy[s];
+            if (!st.exists) continue;
+            if (!st.enabled) continue;
+            if (st.debt == 0) continue;
+
+            uint256 want = NimbrexMath.min(remaining, st.debt);
+            uint256 oldDebt = st.debt;
+            unchecked {
+                st.debt = oldDebt - want;
+                totalDebt -= want;
+            }
+            emit NimbrexDebtUpdated(s, oldDebt, st.debt);
+            uint256 got = INimbrexStrategy(s).onDivest(want);
+            if (got >= remaining) return;
+            remaining -= got;
+        }
+
+        // If still short, revert to avoid partial withdrawals.
+        if (remaining != 0) revert NRX_VAULT_SLIPPAGE();
+    }
+
+    function _accrueMgmtFee() internal {
+        uint64 last = lastMgmtAccrual;
+        uint64 nowTs = uint64(block.timestamp);
+        if (nowTs <= last) return;
+        lastMgmtAccrual = nowTs;
+        uint64 bps = mgmtFeeBpsPerYear;
+        if (bps == 0) return;
+
+        uint256 elapsed = uint256(nowTs - last);
+        // feeAssets = totalAssets * (bps/10000) * (elapsed / 365d)
+        uint256 ta = totalAssets();
+        if (ta == 0) return;
+        uint256 feeAssets = NimbrexMath.mulDivDown(ta, bps, 10_000);
+        feeAssets = NimbrexMath.mulDivDown(feeAssets, elapsed, 365 days);
+        if (feeAssets == 0) return;
+        uint256 feeShares = convertToShares(feeAssets);
+        if (feeShares == 0) return;
