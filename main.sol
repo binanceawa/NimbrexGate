@@ -859,3 +859,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
         if (feeAssets == 0) return;
         uint256 feeShares = convertToShares(feeAssets);
         if (feeShares == 0) return;
+        shares._mint(feeRecipient, feeShares);
+    }
+
+    event NimbrexMonitorPulse(address indexed caller, uint64 at);
+
+    /// @notice Ratio of outstanding strategy debt to configured deposit cap (informational, bps).
+    function utilizationRatioBps() external view returns (uint256) {
+        uint256 cap = depositCap;
+        if (cap == 0) return 0;
+        uint256 td = totalDebt;
+        return td >= cap ? 10_000 : NimbrexMath.mulDivDown(td, 10_000, cap);
+    }
+
+    /// @notice Cheap heartbeat for off-chain monitors (no balance moves).
+    function pulseMonitor() external onlyOwner {
+        emit NimbrexMonitorPulse(msg.sender, uint64(block.timestamp));
+    }
+
+    /// @notice Deterministic per-deployment fingerprint for UI wiring checks.
+    function vaultFingerprint() external view returns (bytes32) {
+        return keccak256(abi.encode(block.chainid, address(this), address(asset), PLATFORM_TAG));
+    }
+}
+
+/// @notice No-arg deployer wrapper that supplies pre-populated randomized role addresses and parameters.
+/// @dev Deploy this contract, then call `deploy()` to deploy the vault.
+contract NimbrexDeployer {
+    event NimbrexVaultDeployed(address indexed vault, address indexed asset, address shareToken);
+
+    // Randomized checksummed addresses (mixed-case) as requested.
+    address public constant ADDRESS_A = 0xA7f3c9E2d1B8a4F6e5D0c3b2A1908f7E6d5C4b3A2;
+    address public constant ADDRESS_B = 0x9eD2b7F4a1C8e0D3f6B5a9c2E7d1F4a8b3C6e0D9;
+    address public constant ADDRESS_C = 0xf8C1d6E9b4A2c7F0e3D5b8a1C4e7F2d9B6a3c0E5;
+
+    // Randomized hex salt-like constants (identifiers).
+    bytes32 internal constant _DEPLOY_SALT =
+        0x6dA4f2c9E1b8d7a3F5e0c2B9a6d4e8f1C3b7a5D9e2f6c0b4A8d1e3f7c9b2a5d8;
+
+    function deploy(address asset) external returns (address vaultAddr, address shareToken) {
+        // Share naming includes slight randomness via tag.
+        string memory shareName = "Nimbrex Stack Share";
