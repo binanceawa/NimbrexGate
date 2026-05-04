@@ -777,3 +777,44 @@ contract NimbrexAIVault is NimbrexOwnable2Step, NimbrexReentrancyGuard, NimbrexP
 
         uint256 feeShares = 0;
         if (pnl > 0 && performanceFeeBps != 0) {
+            // Mint shares equal to fee portion of profit, priced at current share price.
+            uint256 profit = uint256(pnl);
+            uint256 feeAssets = NimbrexMath.mulDivDown(profit, performanceFeeBps, 10_000);
+            feeShares = convertToShares(feeAssets);
+            if (feeShares != 0) {
+                shares._mint(feeRecipient, feeShares);
+            }
+        }
+
+        emit NimbrexHarvest(strategyAddr, pnl, totalAfter, feeShares);
+    }
+
+    /// @notice Sweep non-asset tokens mistakenly sent to the vault (owner only).
+    function sweep(address token, address to, uint256 amount) external onlyOwner nonReentrant {
+        if (to == address(0) || token == address(0)) revert NRX_VAULT_BAD_ADDR();
+        if (token == address(asset)) revert NRX_VAULT_BAD_ASSET();
+        IERC20(token).transfer(to, amount);
+        emit NimbrexSweep(token, to, amount);
+    }
+
+    // ----- Internal plumbing
+    function _previewMintInternal(uint256 shares_) internal view returns (uint256 assetsIn) {
+        uint256 ts = shares.totalSupply();
+        if (ts == 0) return shares_;
+        uint256 ta = totalAssets();
+        return NimbrexMath.mulDivUp(shares_, ta, ts);
+    }
+
+    function _previewWithdrawInternal(uint256 assets_) internal view returns (uint256 sharesBurned) {
+        uint256 ts = shares.totalSupply();
+        if (ts == 0) return assets_;
+        uint256 ta = totalAssets();
+        return NimbrexMath.mulDivUp(assets_, ts, ta);
+    }
+
+    function _pullLiquidity(uint256 assetsNeeded) internal {
+        uint256 idle = totalIdleAssets();
+        if (idle >= assetsNeeded) return;
+        uint256 remaining = assetsNeeded - idle;
+
+        // Pull proportionally from enabled strategies, up to their debt.
