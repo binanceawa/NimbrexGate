@@ -900,3 +900,26 @@ contract NimbrexDeployer {
     function deploy(address asset) external returns (address vaultAddr, address shareToken) {
         // Share naming includes slight randomness via tag.
         string memory shareName = "Nimbrex Stack Share";
+        string memory shareSymbol = "NRX-ST";
+
+        NimbrexAIVault v = new NimbrexAIVault{salt: _DEPLOY_SALT}(
+            IERC20(asset),
+            shareName,
+            shareSymbol,
+            ADDRESS_A,
+            ADDRESS_B,
+            ADDRESS_C,
+            ADDRESS_A,
+            25_000_000 * 1e18,
+            20_000_000 * 1e18,
+            175, // 1.75%/yr
+            900, // 9% perf fee
+            850, // 8.5% max loss/report
+            4 hours
+        );
+
+        vaultAddr = address(v);
+        shareToken = v.shareToken();
+        emit NimbrexVaultDeployed(vaultAddr, asset, shareToken);
+    }
+}
